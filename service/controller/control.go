@@ -108,18 +108,48 @@ func (c *Controller) removeUsers(users []string, tag string) error {
 func (c *Controller) getTraffic(email string) (up int64, down int64, upCounter stats.Counter, downCounter stats.Counter) {
 	upName := "user>>>" + email + ">>>traffic>>>uplink"
 	downName := "user>>>" + email + ">>>traffic>>>downlink"
+
+	// Get original counters
 	upCounter = c.stm.GetCounter(upName)
 	downCounter = c.stm.GetCounter(downName)
-	if upCounter != nil && upCounter.Value() != 0 {
-		up = upCounter.Value()
+
+	// Try to get enhanced Vision counters if available
+	if c.dispatcher.VisionStats != nil {
+		visionUpCounter := c.dispatcher.VisionStats.GetVisionCounter(upName, upCounter)
+		visionDownCounter := c.dispatcher.VisionStats.GetVisionCounter(downName, downCounter)
+
+		// Use Vision counter values which include both regular and Vision traffic
+		if visionUpCounter != nil && visionUpCounter.Value() != 0 {
+			up = visionUpCounter.Value()
+			upCounter = visionUpCounter
+		} else if upCounter != nil && upCounter.Value() != 0 {
+			up = upCounter.Value()
+		} else {
+			upCounter = nil
+		}
+
+		if visionDownCounter != nil && visionDownCounter.Value() != 0 {
+			down = visionDownCounter.Value()
+			downCounter = visionDownCounter
+		} else if downCounter != nil && downCounter.Value() != 0 {
+			down = downCounter.Value()
+		} else {
+			downCounter = nil
+		}
 	} else {
-		upCounter = nil
+		// Fallback to original logic if Vision stats not available
+		if upCounter != nil && upCounter.Value() != 0 {
+			up = upCounter.Value()
+		} else {
+			upCounter = nil
+		}
+		if downCounter != nil && downCounter.Value() != 0 {
+			down = downCounter.Value()
+		} else {
+			downCounter = nil
+		}
 	}
-	if downCounter != nil && downCounter.Value() != 0 {
-		down = downCounter.Value()
-	} else {
-		downCounter = nil
-	}
+
 	return up, down, upCounter, downCounter
 }
 

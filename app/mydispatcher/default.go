@@ -101,6 +101,7 @@ type DefaultDispatcher struct {
 	fdns        dns.FakeDNSEngine
 	Limiter     *limiter.Limiter
 	RuleManager *rule.Manager
+	VisionStats *VisionStatsManager
 }
 
 func init() {
@@ -126,6 +127,7 @@ func (d *DefaultDispatcher) Init(config *Config, om outbound.Manager, router rou
 	d.stats = sm
 	d.Limiter = limiter.New()
 	d.RuleManager = rule.New()
+	d.VisionStats = NewVisionStatsManager()
 	d.dns = dns
 	return nil
 }
@@ -183,21 +185,37 @@ func (d *DefaultDispatcher) getLink(ctx context.Context) (*transport.Link, *tran
 		}
 
 		p := d.policy.ForLevel(user.Level)
+		userTag := user.Email
+
 		if p.Stats.UserUplink {
 			name := "user>>>" + user.Email + ">>>traffic>>>uplink"
 			if c, _ := stats.GetOrRegisterCounter(d.stats, name); c != nil {
-				inboundLink.Writer = &SizeStatWriter{
-					Counter: c,
-					Writer:  inboundLink.Writer,
+				// Use enhanced writer that can handle both Vision and non-Vision flows
+				visionCounter := d.VisionStats.GetVisionCounter(name, c)
+				inboundLink.Writer = &EnhancedSizeStatWriter{
+					Counter:       c,
+					VisionCounter: visionCounter,
+					Writer:        inboundLink.Writer,
+					UserTag:       userTag,
+					IsVision:      false, // Will be determined later in routedDispatch
+					VisionManager: d.VisionStats,
+					ctx:           ctx,
 				}
 			}
 		}
 		if p.Stats.UserDownlink {
 			name := "user>>>" + user.Email + ">>>traffic>>>downlink"
 			if c, _ := stats.GetOrRegisterCounter(d.stats, name); c != nil {
-				outboundLink.Writer = &SizeStatWriter{
-					Counter: c,
-					Writer:  outboundLink.Writer,
+				// Use enhanced writer that can handle both Vision and non-Vision flows
+				visionCounter := d.VisionStats.GetVisionCounter(name, c)
+				outboundLink.Writer = &EnhancedSizeStatWriter{
+					Counter:       c,
+					VisionCounter: visionCounter,
+					Writer:        outboundLink.Writer,
+					UserTag:       userTag,
+					IsVision:      false, // Will be determined later in routedDispatch
+					VisionManager: d.VisionStats,
+					ctx:           ctx,
 				}
 			}
 		}
@@ -383,13 +401,34 @@ func sniffer(ctx context.Context, cReader *cachedReader, metadataOnly bool, netw
 }
 
 func (d *DefaultDispatcher) routedDispatch(ctx context.Context, link *transport.Link, destination net.Destination) {
+	// Check if this is a Vision flow and update the writers accordingly
+	sessionInbound := session.InboundFromContext(ctx)
+	if sessionInbound != nil && sessionInbound.User != nil {
+		isVision := d.VisionStats.IsVisionFlow(ctx, destination)
+		userTag := sessionInbound.User.Email
+
+		// Track Vision connection if it's a Vision flow
+		if isVision {
+			d.VisionStats.TrackVisionConnection(userTag, true)
+		}
+
+		// Update the Vision status in the writers if they are EnhancedSizeStatWriter
+		if enhancedWriter, ok := link.Writer.(*EnhancedSizeStatWriter); ok {
+			enhancedWriter.IsVision = isVision
+		}
+
+		// Also check if there's a reader that needs updating (for inbound traffic)
+		if enhancedReader, ok := link.Reader.(*EnhancedSizeStatReader); ok {
+			enhancedReader.IsVision = isVision
+		}
+	}
+
 	// DNS hosts lookup functionality is no longer available in the current Xray core version
 	// The hosts lookup feature has been deprecated/moved in the new DNS implementation
 
 	var handler outbound.Handler
 
 	// Check if domain and protocol hit the rule
-	sessionInbound := session.InboundFromContext(ctx)
 	// Whether the inbound connection contains a user
 	if sessionInbound.User != nil {
 		if d.RuleManager.Detect(sessionInbound.Tag, destination.String(), sessionInbound.User.Email) {
