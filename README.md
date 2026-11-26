@@ -65,6 +65,57 @@ A Xray backend framework that can easily support many panels.
 | [GoV2Panel](https://github.com/pingProMax/gov2panel)   | √     | √      | √                       |
 | [BunPanel](https://github.com/pennyMorant/bunpanel-release)   | √     | √      | √                       |
 
+## 本分支的内核与兼容性
+
+本分支使用 Xray-core v26.11.9 和 Go 1.27。运行 `XrayR version` 可查看二进制实际嵌入的内核版本。Go 模块版本末尾的 `676eaf66f8f0` 对应该正式版的发布提交。[上游发布](https://github.com/XTLS/Xray-core/releases/tag/v26.11.9)
+
+- Vision 包含上游针对 direct copy 后外层 TLS 关闭通知的修复。客户端也使用 Xray 的节点可在两端升级后验证连接收尾。[修复记录](https://github.com/XTLS/Xray-core/pull/6834)
+- 使用自定义出站时，请检查 Freedom 对私有目标地址的默认限制，以及 TLS 配置中的旧 `allowInsecure` 字段。确需访问内网服务时，可用 `finalRules` 限定允许的地址和端口。
+- 旧 Shadowsocks 的 `none` / `plain` 加密方式和 `DisableIVCheck` 开关已被内核移除。使用旧式 mKCP 包头或 seed 的自定义配置也需要迁移到新版内核支持的设置。
+- 本地可用 `go test ./panel -run '^TestVision'` 检查 TLS、REALITY、流量计数和限速，用 `go test ./panel -run '^
+
+### 一键安装
+
+```
+wget -N https://raw.githubusercontent.com/XrayR-project/XrayR-release/master/install.sh && bash install.sh
+```
+
+### 使用Docker部署软件
+
+[Docker部署教程](https://xrayr-project.github.io/XrayR-doc/xrayr-xia-zai-he-an-zhuang/install/docker)
+
+### 手动安装
+
+[手动安装教程](https://xrayr-project.github.io/XrayR-doc/xrayr-xia-zai-he-an-zhuang/install/manual)
+
+## 配置文件及详细使用教程
+
+[详细使用教程](https://xrayr-project.github.io/XrayR-doc/)
+
+## Thanks
+
+* [Project X](https://github.com/XTLS/)
+* [V2Fly](https://github.com/v2fly)
+* [VNet-V2ray](https://github.com/ProxyPanel/VNet-V2ray)
+* [Air-Universe](https://github.com/crossfw/Air-Universe)
+
+## Licence
+
+[Mozilla Public License Version 2.0](https://github.com/XrayR-project/XrayR/blob/master/LICENSE)
+
+## Telgram
+
+[XrayR后端讨论](https://t.me/XrayR_project)
+
+[XrayR通知](https://t.me/XrayR_channel)
+
+## Stargazers over time
+
+[![Stargazers over time](https://starchart.cc/XrayR-project/XrayR.svg)](https://starchart.cc/XrayR-project/XrayR)
+
+
+ -bench BenchmarkVisionRoundTrip -benchmem -count 5` 测量回环双向传输吞吐。
+
 ## 软件安装
 
 ### 一键安装

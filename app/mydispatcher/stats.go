@@ -1,25 +1,6 @@
 package mydispatcher
 
-import (
-	"github.com/xtls/xray-core/common"
-	"github.com/xtls/xray-core/common/buf"
-	"github.com/xtls/xray-core/features/stats"
-)
+import "github.com/xtls/xray-core/app/dispatcher"
 
-type SizeStatWriter struct {
-	Counter stats.Counter
-	Writer  buf.Writer
-}
-
-func (w *SizeStatWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
-	w.Counter.Add(int64(mb.Len()))
-	return w.Writer.WriteMultiBuffer(mb)
-}
-
-func (w *SizeStatWriter) Close() error {
-	return common.Close(w.Writer)
-}
-
-func (w *SizeStatWriter) Interrupt() {
-	common.Interrupt(w.Writer)
-}
+// Use the core writer so Vision can account for bytes transferred by splice.
+type SizeStatWriter = dispatcher.SizeStatWriter
