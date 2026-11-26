@@ -65,6 +65,17 @@ A Xray backend framework that can easily support many panels.
 | [GoV2Panel](https://github.com/pingProMax/gov2panel)   | √     | √      | √                       |
 | [BunPanel](https://github.com/pennyMorant/bunpanel-release)   | √     | √      | √                       |
 
+## 本分支的内核与兼容性
+
+本分支使用 Xray-core v26.11.9 和 Go 1.27。运行 `XrayR version` 可查看二进制实际嵌入的内核版本。Go 模块版本末尾的 `676eaf66f8f0` 对应该正式版的发布提交。[上游发布](https://github.com/XTLS/Xray-core/releases/tag/v26.11.9)
+
+- Vision 包含上游针对 direct copy 后外层 TLS 关闭通知的修复。客户端也使用 Xray 的节点可在两端升级后验证连接收尾。[修复记录](https://github.com/XTLS/Xray-core/pull/6834)
+- 使用自定义出站时，请检查 Freedom 对私有目标地址的默认限制，以及 TLS 配置中的旧 `allowInsecure` 字段。确需访问内网服务时，可用 `finalRules` 限定允许的地址和端口。
+- 旧 Shadowsocks 的 `none` / `plain` 加密方式和 `DisableIVCheck` 开关已被内核移除。使用旧式 mKCP 包头或 seed 的自定义配置也需要迁移到新版内核支持的设置。
+- Mihomo 连接标准版 VLESS + REALITY 节点时，在节点上设置 `client-fingerprint: chrome`，并在已有 `reality-opts` 中设置 `support-x25519mlkem768: true`。使用订阅时也应在该节点的 Mihomo 订阅模板中保留此选项。[Mihomo 配置说明](https://wiki.metacubex.one/config/proxies/tls/#reality-optssupport-x25519mlkem768)
+- 需要接入只发送传统 X25519 密钥份额的客户端时，可用 `GOOS=linux GOARCH=amd64 bash release/compat/build.sh ./XrayR-linux-amd64-compat` 单独编译兼容版。`./XrayR-linux-amd64-compat version` 会显示 `XrayR-REALITY-X25519-compat`。该程序的全部 REALITY 入站均接受通过身份校验的传统 X25519 握手，这些连接使用经典密钥交换。
+- 本地可用 `go test ./panel -run '^TestVision'` 检查 TLS、REALITY、流量计数和限速，用 `go test ./panel -run '^$' -bench BenchmarkVisionRoundTrip -benchmem -count 5` 测量回环双向传输吞吐。
+
 ## 软件安装
 
 ### 一键安装

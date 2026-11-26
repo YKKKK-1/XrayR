@@ -9,11 +9,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sagernet/sing-shadowsocks/shadowaead_2022"
-	C "github.com/sagernet/sing/common"
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/infra/conf"
+	"github.com/xtls/xray-core/proxy/shadowsocks_2022"
 
 	"github.com/XrayR-project/XrayR/api"
 	"github.com/XrayR-project/XrayR/common/mylego"
@@ -41,7 +40,7 @@ func InboundBuilder(config *Config, nodeInfo *api.NodeInfo, tag string) (*core.I
 	// SniffingConfig
 	sniffingConfig := &conf.SniffingConfig{
 		Enabled:      true,
-		DestOverride: &conf.StringList{"http", "tls", "quic", "fakedns"},
+		DestOverride: conf.StringList{"http", "tls", "quic", "fakedns"},
 	}
 	if config.DisableSniffing {
 		sniffingConfig.Enabled = false
@@ -99,30 +98,24 @@ func InboundBuilder(config *Config, nodeInfo *api.NodeInfo, tag string) (*core.I
 		protocol = "shadowsocks"
 		cipher := strings.ToLower(nodeInfo.CypherMethod)
 
-		proxySetting = &conf.ShadowsocksServerConfig{
+		ss := &conf.ShadowsocksServerConfig{
 			Cipher:   cipher,
 			Password: nodeInfo.ServerKey, // shadowsocks2022 shareKey
 		}
 
-		proxySetting, _ := proxySetting.(*conf.ShadowsocksServerConfig)
-		// shadowsocks must have a random password
-		// shadowsocks2022's password == user PSK, thus should a length of string >= 32 and base64 encoder
+		// Seed the multi-user handler before the panel supplies its users.
 		b := make([]byte, 32)
 		rand.Read(b)
-		randPasswd := hex.EncodeToString(b)
-		if C.Contains(shadowaead_2022.List, cipher) {
-			proxySetting.Users = append(proxySetting.Users, &conf.ShadowsocksUserConfig{
-				Password: base64.StdEncoding.EncodeToString(b),
+		if method, err := shadowsocks_2022.GetCipherMethod(cipher); err == nil {
+			ss.Users = append(ss.Users, &conf.ShadowsocksUserConfig{
+				Password: base64.StdEncoding.EncodeToString(b[:method.KeySaltLength]),
 			})
 		} else {
-			proxySetting.Password = randPasswd
+			ss.Password = hex.EncodeToString(b)
 		}
 
-		proxySetting.NetworkList = &conf.NetworkList{"tcp", "udp"}
-		proxySetting.IVCheck = true
-		if config.DisableIVCheck {
-			proxySetting.IVCheck = false
-		}
+		ss.NetworkList = &conf.NetworkList{"tcp", "udp"}
+		proxySetting = ss
 
 	case "dokodemo-door":
 		protocol = "dokodemo-door"
@@ -160,13 +153,10 @@ func InboundBuilder(config *Config, nodeInfo *api.NodeInfo, tag string) (*core.I
 		}
 		streamSetting.TCPSettings = tcpSetting
 	case "websocket":
-		headers := make(map[string]string)
-		headers["Host"] = nodeInfo.Host
 		wsSettings := &conf.WebSocketConfig{
 			AcceptProxyProtocol: config.EnableProxyProtocol,
 			Host:                nodeInfo.Host,
 			Path:                nodeInfo.Path,
-			Headers:             headers,
 		}
 		streamSetting.WSSettings = wsSettings
 	case "grpc":
@@ -201,7 +191,7 @@ func InboundBuilder(config *Config, nodeInfo *api.NodeInfo, tag string) (*core.I
 
 			r := nodeInfo.REALITYConfig
 			streamSetting.REALITYSettings = &conf.REALITYConfig{
-				Show:         config.REALITYConfigs.Show,
+				Show:         config.REALITYConfigs != nil && config.REALITYConfigs.Show,
 				Dest:         []byte(`"` + r.Dest + `"`),
 				Xver:         r.ProxyProtocolVer,
 				ServerNames:  r.ServerNames,
@@ -243,7 +233,7 @@ func InboundBuilder(config *Config, nodeInfo *api.NodeInfo, tag string) (*core.I
 	}
 
 	// Support ProxyProtocol for any transport protocol
-	if networkType != "tcp" && networkType != "ws" && config.EnableProxyProtocol {
+	if networkType != "tcp" && networkType != "websocket" && config.EnableProxyProtocol {
 		sockoptConfig := &conf.SocketConfig{
 			AcceptProxyProtocol: config.EnableProxyProtocol,
 		}

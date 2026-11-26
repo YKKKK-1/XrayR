@@ -5,6 +5,7 @@ import (
 
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/net"
+	"github.com/xtls/xray-core/common/protocol"
 	"github.com/xtls/xray-core/common/protocol/bittorrent"
 	"github.com/xtls/xray-core/common/protocol/http"
 	"github.com/xtls/xray-core/common/protocol/quic"
@@ -57,14 +58,19 @@ var errUnknownContent = newError("unknown content")
 func (s *Sniffer) Sniff(c context.Context, payload []byte, network net.Network) (SniffResult, error) {
 	var pendingSniffer []protocolSnifferWithMetadata
 	for _, si := range s.sniffer {
-		s := si.protocolSniffer
+		sniff := si.protocolSniffer
 		if si.metadataSniffer || si.network != network {
 			continue
 		}
-		result, err := s(c, payload)
+		result, err := sniff(c, payload)
 		if err == common.ErrNoClue {
 			pendingSniffer = append(pendingSniffer, si)
 			continue
+		}
+
+		if err == protocol.ErrProtoNeedMoreData {
+			s.sniffer = []protocolSnifferWithMetadata{si}
+			return nil, err
 		}
 
 		if err == nil && result != nil {
@@ -83,12 +89,12 @@ func (s *Sniffer) Sniff(c context.Context, payload []byte, network net.Network) 
 func (s *Sniffer) SniffMetadata(c context.Context) (SniffResult, error) {
 	var pendingSniffer []protocolSnifferWithMetadata
 	for _, si := range s.sniffer {
-		s := si.protocolSniffer
+		sniff := si.protocolSniffer
 		if !si.metadataSniffer {
 			pendingSniffer = append(pendingSniffer, si)
 			continue
 		}
-		result, err := s(c, nil)
+		result, err := sniff(c, nil)
 		if err == common.ErrNoClue {
 			pendingSniffer = append(pendingSniffer, si)
 			continue
