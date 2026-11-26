@@ -1,0 +1,72 @@
+diff --git a/tls.go b/tls.go
+--- a/tls.go
++++ b/tls.go
+@@ -231,8 +231,8 @@
+ 					break // ensure order
+ 				}
+ 			}
+-			if peerPub2 == nil {
+-				break // reject outdated/strange Client Hello that doesn't have X25519MLKEM768 before optional X25519
++			if peerPub2 == nil && !isLegacyX25519Hello(hs.clientHello.keyShares) {
++				break
+ 			}
+ 			if peerPub == nil {
+ 				peerPub = peerPub2 // secondary choice: X25519 in X25519MLKEM768
+diff --git a/legacy_x25519.go b/legacy_x25519.go
+new file mode 100644
+--- /dev/null
++++ b/legacy_x25519.go
+@@ -0,0 +1,19 @@
++package reality
++
++// isLegacyX25519Hello admits a single classical share only if the client
++// omitted the hybrid group entirely. A rejected hybrid offer stays rejected.
++func isLegacyX25519Hello(shares []keyShare) bool {
++	found := false
++	for _, share := range shares {
++		switch share.group {
++		case X25519MLKEM768:
++			return false
++		case X25519:
++			if found || len(share.data) != 32 {
++				return false
++			}
++			found = true
++		}
++	}
++	return found
++}
+diff --git a/legacy_x25519_test.go b/legacy_x25519_test.go
+new file mode 100644
+--- /dev/null
++++ b/legacy_x25519_test.go
+@@ -0,0 +1,29 @@
++package reality
++
++import "testing"
++
++func TestLegacyX25519Hello(t *testing.T) {
++	classic := keyShare{group: X25519, data: make([]byte, 32)}
++	hybrid := keyShare{group: X25519MLKEM768}
++	other := keyShare{group: CurveP256, data: make([]byte, 65)}
++	cases := []struct {
++		name   string
++		shares []keyShare
++		allow  bool
++	}{
++		{"one classical share", []keyShare{classic}, true},
++		{"other offered groups", []keyShare{other, classic}, true},
++		{"no classical share", []keyShare{other}, false},
++		{"invalid classical length", []keyShare{{group: X25519, data: make([]byte, 31)}}, false},
++		{"duplicate classical", []keyShare{classic, classic}, false},
++		{"hybrid after classical", []keyShare{classic, hybrid}, false},
++		{"hybrid before classical", []keyShare{hybrid, classic}, false},
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			if got := isLegacyX25519Hello(tc.shares); got != tc.allow {
++				t.Errorf("isLegacyX25519Hello() = %v, want %v", got, tc.allow)
++			}
++		})
++	}
++}

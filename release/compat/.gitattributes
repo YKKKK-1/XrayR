@@ -1,0 +1,2 @@
+build.sh text eol=lf
+*.patch text eol=lf whitespace=-space-before-tab
