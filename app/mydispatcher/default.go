@@ -164,7 +164,14 @@ func (d *DefaultDispatcher) userBucket(ctx context.Context) (*rate.Limiter, erro
 	if in == nil || in.User == nil || in.User.Email == "" || in.Source.Address == nil {
 		return nil, nil
 	}
-	bucket, limited, reject := d.Limiter.GetUserBucket(in.Tag, in.User.Email, in.Source.Address.String())
+	addr := in.Source.Address
+	var source string
+	if addr.Family().IsIP() {
+		source = addr.IP().String()
+	} else {
+		source = addr.Domain()
+	}
+	bucket, limited, reject := d.Limiter.GetUserBucket(in.Tag, in.User.Email, source)
 	if reject {
 		return nil, newError("Devices reach the limit: ", in.User.Email)
 	}
